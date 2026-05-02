@@ -1,101 +1,96 @@
-"""Quiz endpoint handlers."""
+"""Quiz endpoint handlers with rate limiting and history tracking."""
 
 from datetime import datetime
 from uuid import uuid4
 
-from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+import asyncio
 
 from app.config import settings
 from app.logger import log
+from app.main import limiter
 from app.middleware.auth import verify_api_key
-from app.models.schemas import QuizRequest
+from app.models.schemas import QuizRequest, RunResponse, HealthResponse
 from app.services.agent import solve_quiz_task
-from app.services.history import history_service
+from app.services.browser import get_task_from_url
+from app.services.history import run_history
 from app.services.sandbox import execute_python_code
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
-# Simple rate limiter (production should use slowapi or equivalent)
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
-limiter = Limiter(key_func=get_remote_address)
+@router.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint (no auth, no rate limit).
+    
+    Returned by Docker HEALTHCHECK and frontend status indicator.
+    """
+    return {
+        "status": "ok",
+        "model": "claude-sonnet-4-20250514",
+        "version": "2.0.0",
+    }
 
 
-def execute_python_code_wrapped(python_code: str) -> dict:
-    """Execute generated Python code safely.
+@router.get("/runs", response_model=list[RunResponse])
+@limiter.limit("60/minute")
+async def list_runs(request: Request):
+    """List all quiz runs (newest first).
+    
+    Returns paginated list of all quiz runs with their iterations.
+    No authentication required (read-only).
+    Rate limited to 60/minute.
+    
+    Returns:
+        List of RunResponse objects
+    """
+    try:
+        runs = await run_history.get_all()
+        log.info("history.list_runs", count=len(runs))
+        return runs
+    except Exception as e:
+        log.error("history.list_error", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve runs")
+
+
+@router.get("/runs/{run_id}", response_model=RunResponse)
+@limiter.limit("60/minute")
+async def get_run(request: Request, run_id: str):
+    """Retrieve a single quiz run by ID.
+    
+    Returns complete run record including all iterations.
+    No authentication required (read-only).
+    Rate limited to 60/minute.
     
     Args:
-        python_code: Python code with 'result' variable assigned
+        run_id: The run ID (UUID)
         
     Returns:
-        Dictionary with 'result' key containing the execution result
+        RunResponse object
         
     Raises:
-        Exception: If code execution fails
+        404: If run not found
     """
-    namespace = {}
     try:
-        exec(python_code, namespace)
-        result = namespace.get("result")
-        log.info("code_execution_success", result_type=type(result).__name__)
-        return {"result": result}
-    except Exception as e:
-        log.error("code_execution_failed", error=str(e))
-        raise
-
-
-@router.post("/solve")
-@limiter.limit("10/minute")
-async def solve_quiz(
-    request: Request,
-    task_text: str,
-    current_url: str,
-    api_key: str = Depends(verify_api_key),
-):
-    """Solve quiz task synchronously: extract info and generate solution code.
-    
-    Query Parameters:
-        task_text: Raw HTML/text content of the task page
-        current_url: Current page URL for context
+        run = await run_history.get_run(run_id)
         
-    Returns:
-        JSON with submission_url, python_code, explanation, and result
-    """
-    try:
-        log.info("quiz_solve_requested", url=current_url)
-
-        # Orchestrate task solving (extraction + code generation)
-        submission_url, python_code, explanation = solve_quiz_task(
-            task_text, current_url
-        )
-
-        # Execute the generated code
-        execution_result = execute_python_code_wrapped(python_code)
-        answer = execution_result["result"]
-
-        log.info(
-            "quiz_solve_completed",
-            submission_url=submission_url,
-            answer=str(answer)[:100],
-        )
-
-        return {
-            "status": "solved",
-            "submission_url": submission_url,
-            "python_code": python_code,
-            "explanation": explanation,
-            "result": answer,
-        }
+        if not run:
+            log.warning("history.run_not_found", run_id=run_id)
+            raise HTTPException(status_code=404, detail="Run not found")
+        
+        log.info("history.run_retrieved", run_id=run_id, iterations=len(run.get("iterations", [])))
+        return run
+    except HTTPException:
+        raise
     except Exception as e:
-        log.error("quiz_solve_error", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        log.error("history.get_error", run_id=run_id, error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve run")
 
 
-@router.post("/run")
-@limiter.limit("5/minute")
+@router.post("/run", response_model=dict)
+@limiter.limit("10/minute")
 async def run_quiz(
     request: Request,
     body: QuizRequest,
@@ -104,36 +99,48 @@ async def run_quiz(
     """Enqueue a complete quiz run (multi-step flow) via ARQ.
     
     This endpoint:
-    1. Creates a run record in history
-    2. Enqueues the process_quiz_flow task to ARQ
-    3. Returns immediately with the run_id for tracking
+    1. Validates Bearer token in Authorization header
+    2. Creates a run record in history
+    3. Enqueues the process_quiz_flow task to ARQ
+    4. Returns immediately with the run_id for tracking
     
     The actual processing happens asynchronously in the worker.
     
+    Authentication:
+        Bearer <api_key> in Authorization header (required)
+    
+    Rate limit:
+        10 per minute per IP
+    
     Args:
         body: QuizRequest with url field
-        api_key: API key from Authorization header
+        api_key: Validated Bearer token from Authorization header
         
     Returns:
         Dictionary with run_id for tracking progress
+        
+    Raises:
+        401: Invalid or missing API key
+        429: Rate limit exceeded
+        500: Failed to enqueue job
     """
     try:
         run_id = str(uuid4())
-        log.info("quiz_run_requested", run_id=run_id, url=body.url)
+        log.info("quiz.run_requested", run_id=run_id, url=body.url)
 
         # Create run record in history
-        await history_service.create_run(run_id, body.url)
+        await run_history.create_run(run_id, body.url)
 
-        # Connect to Redis and enqueue job
+        # Enqueue job to ARQ (via Redis)
+        from arq import create_pool
         redis = await create_pool(
             RedisSettings.from_dsn(settings.REDIS_URL)
         )
         
         job = await redis.enqueue_job("process_quiz_flow", body.url, run_id)
-        
         await redis.close()
 
-        log.info("quiz_run_enqueued", run_id=run_id, job_id=job.job_id)
+        log.info("quiz.run_enqueued", run_id=run_id, job_id=job.job_id)
 
         return {
             "message": "Quiz run enqueued",
@@ -143,7 +150,7 @@ async def run_quiz(
             "created_at": datetime.utcnow().isoformat(),
         }
     except Exception as e:
-        log.error("quiz_run_error", error=str(e))
+        log.error("quiz.run_error", error=str(e))
         raise HTTPException(
             status_code=500, detail=f"Failed to enqueue quiz run: {str(e)}"
         )
@@ -179,3 +186,27 @@ async def get_quiz_status(
     except Exception as e:
         log.error("quiz_status_error", run_id=run_id, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/runs/{run_id}/logs")
+async def stream_logs(run_id: str):
+    async def event_generator():
+        last_count = 0
+        for _ in range(120):
+            run = await run_history.get_run(run_id)
+            if run:
+                iterations = run.get("iterations", [])
+                if len(iterations) > last_count:
+                    for it in iterations[last_count:]:
+                        line = f"[Step {it['step']}] {it['explanation']} | Answer: {it['answer']} | Correct: {it['correct']}"
+                        yield f"data: {line}\n\n"
+                    last_count = len(iterations)
+                if run.get("status") == "completed":
+                    yield f"data: [DONE] Run completed with status: {run.get('final_status')}\n\n"
+                    break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no"
+    })
