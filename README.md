@@ -87,7 +87,7 @@ To replicate this research environment locally:
 
 ---
 
-## 🧪 Testing the API
+## Testing the API
 
 The system exposes a RESTful endpoint `/run` which initiates the autonomous agent.
 
@@ -102,19 +102,4 @@ curl -X POST "[https://llm-solver-app.onrender.com/run](https://llm-solver-app.o
          }'
 ```
 
-
-##  License
-
-This project is licensed under the **MIT License**.
-
-Copyright (c) 2025 Kunal Somani
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
----
-
-> This project was developed as part of the IITM Tools in Data Science curriculum, demonstrating the practical application of LLM Agents in automated workflows.         
+       
