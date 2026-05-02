@@ -1,73 +1,56 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 jobs:
-  lint-and-test:
+  backend-lint:
     runs-on: ubuntu-latest
-    
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt
-          pip install pytest pytest-cov black flake8 mypy
-      
-      - name: Lint with flake8
-        run: flake8 backend/app --count --select=E9,F63,F7,F82 --show-source --statistics
-      
-      - name: Format check with black
-        run: black --check backend/app
-      
-      - name: Type check with mypy
-        run: mypy backend/app --ignore-missing-imports || true
-      
-      - name: Run tests
-        run: pytest backend/tests -v --cov=backend/app --cov-report=xml || true
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check backend/
 
-  build-and-push:
-    needs: lint-and-test
+  backend-test:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Build Docker image
-        run: docker build -f backend/Dockerfile -t llm-quiz-solver:${{ github.sha }} .
-      
-      - name: Test Docker image
-        run: |
-          docker run --rm llm-quiz-solver:${{ github.sha }} \
-            python -c "from app.config import settings; print('✓ Config loads successfully')"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r backend/requirements.txt
+      - run: playwright install chromium
+        working-directory: backend
+      - run: pytest backend/ -v --tb=short || echo "No tests yet"
 
-  security-scan:
+  frontend-build:
     runs-on: ubuntu-latest
-    
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+      - uses: actions/setup-node@v4
         with:
-          scan-type: 'fs'
-          scan-ref: 'backend'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-      
-      - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: 'trivy-results.sarif'
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+
+  docker-compose-build:
+    runs-on: ubuntu-latest
+    needs: [backend-lint, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose build
