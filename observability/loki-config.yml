@@ -1,0 +1,35 @@
+auth_enabled: false
+
+ingester:
+  chunk_idle_period: 3m
+  chunk_retain_period: 1m
+  chunk_encoding: gzip
+  max_chunk_age: 2h
+  max_streams_matchers_cache_size_bytes: 10485760
+  max_cached_chunks_per_user: 100
+
+limits_config:
+  enforce_metric_name: false
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema:
+        version: v11
+        index:
+          prefix: index_
+          period: 24h
+
+server:
+  http_listen_port: 3100
+
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/index
+    shared_store: filesystem
+  filesystem:
+    directory: /loki/chunks
