@@ -207,6 +207,9 @@ def solve_quiz_task(task_text: str, current_url: str) -> tuple[str, str, str]:
     2. Generate solution code using _generate_code()
        - Creates runnable Python code with result variable
     
+    With metrics:
+    - AGENT_LLM_LATENCY tracks Anthropic API call duration
+    
     Args:
         task_text: Raw HTML/text content of the task page
         current_url: Current page URL
@@ -218,9 +221,12 @@ def solve_quiz_task(task_text: str, current_url: str) -> tuple[str, str, str]:
         ValueError: If extraction or code generation fails
         anthropic.APIError: If API calls fail (retried internally)
     """
+    from app.main import AGENT_LLM_LATENCY
+    
     # Phase 1: Extract task information
     log.info("agent.extracting", url=current_url)
-    task_info = _extract_task(task_text, current_url)
+    with AGENT_LLM_LATENCY.labels(call_type="extract").time():
+        task_info = _extract_task(task_text, current_url)
     
     submission_url = task_info["submission_url"]
     problem_description = task_info["problem_description"]
@@ -235,7 +241,8 @@ def solve_quiz_task(task_text: str, current_url: str) -> tuple[str, str, str]:
 
     # Phase 2: Generate solution code
     log.info("agent.generating_code", problem=problem_description[:80])
-    code_info = _generate_code(problem_description, data_file_url, expected_type)
+    with AGENT_LLM_LATENCY.labels(call_type="code_gen").time():
+        code_info = _generate_code(problem_description, data_file_url, expected_type)
     
     python_code = code_info["python_code"]
     explanation = code_info["explanation"]

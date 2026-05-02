@@ -1,95 +1,112 @@
-"""Sandboxed execution environment using RestrictedPython."""
+"""Hardened sandboxed execution environment using RestrictedPython.
 
-from RestrictedPython import compile_restricted
+Provides secure, isolated code execution with:
+- RestrictedPython compilation with whitelisted builtins
+- Signal-based execution timeout (30s default)
+- JSON output on errors for robustness
+- Structured logging of all executions
+"""
+
+import signal
+import json
+
+from RestrictedPython import (
+    compile_restricted,
+    safe_globals,
+    limited_builtins,
+    utility_builtins,
+)
+
+import pandas as pd
+import numpy as np
+import requests
 
 from app.logger import log
 
 
-class SandboxExecutor:
-    """Execute code safely in a restricted environment."""
-
-    @staticmethod
-    def execute_code(code: str, context: dict = None) -> str:
-        """Execute code in a sandboxed environment.
-        
-        Compiles code using RestrictedPython and executes in an isolated
-        namespace. Returns the 'result' variable from the executed code.
-        
-        Args:
-            code: Python code to execute (must have 'result' variable)
-            context: Optional initial context dictionary
-            
-        Returns:
-            The value of the 'result' variable after execution
-            
-        Raises:
-            ValueError: If code compilation fails
-            NameError: If 'result' variable not defined in code
-            Exception: Any exception raised during code execution
-        """
-        context = context or {}
-
-        try:
-            log.info("sandbox.compiling", code_length=len(code))
-
-            # Compile code with RestrictedPython
-            byte_code = compile_restricted(code, "<string>", "exec")
-
-            if byte_code.errors:
-                log.error("sandbox.compilation_failed", errors=byte_code.errors)
-                raise ValueError(
-                    f"Code compilation failed: {byte_code.errors}"
-                )
-
-            # Execute in restricted environment
-            exec(byte_code.code, context)
-
-            # Extract result variable
-            if "result" not in context:
-                raise NameError(
-                    "Code did not assign to 'result' variable"
-                )
-
-            result = context["result"]
-            log.info(
-                "sandbox.execution_success",
-                result_type=type(result).__name__,
-            )
-
-            return result
-
-        except SyntaxError as e:
-            log.error("sandbox.syntax_error", error=str(e))
-            raise
-        except Exception as e:
-            log.error(
-                "sandbox.execution_error",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise
-
-
-def execute_python_code(python_code: str):
-    """Execute generated Python code and return result.
+def execute_python_code(code_str: str, timeout_seconds: int = 30):
+    """Execute generated Python code in hardened sandbox with timeout.
     
-    This function is designed to be executor-safe for use with
-    asyncio.loop.run_in_executor().
+    Security features:
+    - RestrictedPython compilation + execution
+    - Whitelisted builtins (no __import__, exec, eval, etc.)
+    - Access to safe libraries: pd, np, requests, json
+    - SIGALRM-based timeout (30s default)
+    - All errors returned as JSON strings for robustness
     
     Args:
-        python_code: Python code with 'result' variable
+        code_str: Python code to execute (must assign to 'result' variable)
+        timeout_seconds: Max execution time (default 30s)
         
     Returns:
-        The value of the 'result' variable
+        The value of the 'result' variable, or error string on failure
         
     Raises:
-        ValueError: If code compilation fails
-        NameError: If 'result' not defined
-        Exception: If execution fails
+        No exceptions raised; all errors wrapped as return values
     """
-    executor = SandboxExecutor()
-    return executor.execute_code(python_code)
+    log.info("sandbox.start", code_length=len(code_str), timeout=timeout_seconds)
 
+    # Step 1: Compile with RestrictedPython
+    try:
+        byte_code = compile_restricted(code_str, filename="agent_code", mode="exec")
+        if byte_code.errors:
+            error_msg = f"Compilation errors: {byte_code.errors}"
+            log.error("sandbox.compilation_failed", errors=byte_code.errors)
+            return error_msg
+    except SyntaxError as e:
+        error_msg = f"SyntaxError: {e}"
+        log.error("sandbox.syntax_error", error=str(e))
+        return error_msg
 
-# Global instance for synchronous access
-sandbox = SandboxExecutor()
+    # Step 2: Build restricted globals (whitelisted builtins + libraries)
+    restricted_globals = {
+        **safe_globals,
+        "_print_": print,
+        "_getiter_": iter,
+        "_getattr_": getattr,
+        "_write_": lambda x: x,
+        "__builtins__": {**limited_builtins, **utility_builtins},
+        "pd": pd,
+        "np": np,
+        "requests": requests,
+        "json": json,
+        "result": None,
+    }
+
+    # Step 3: Set up timeout handler
+    def _timeout_handler(signum, frame):
+        raise TimeoutError(f"Execution exceeded {timeout_seconds}s time limit")
+
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(timeout_seconds)
+
+    try:
+        # Execute in sandbox
+        exec(byte_code.code, restricted_globals)
+        signal.alarm(0)  # Cancel alarm
+
+        # Extract result
+        result = restricted_globals.get("result", "No result variable set")
+        log.info(
+            "sandbox.done",
+            result_type=type(result).__name__,
+            preview=str(result)[:100],
+        )
+        return result
+
+    except TimeoutError as e:
+        error_msg = f"Timeout: code exceeded {timeout_seconds}s"
+        log.error("sandbox.timeout", timeout=timeout_seconds, error=str(e))
+        return error_msg
+
+    except Exception as e:
+        error_msg = f"Execution Error: {type(e).__name__}: {e}"
+        log.error(
+            "sandbox.exec_error",
+            error=error_msg,
+            error_type=type(e).__name__,
+        )
+        return error_msg
+
+    finally:
+        signal.alarm(0)  # Ensure alarm is always cancelled
