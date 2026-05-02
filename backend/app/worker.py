@@ -13,11 +13,16 @@ import asyncio
 from datetime import datetime
 
 import requests
-from arq import create_pool
 from arq.connections import RedisSettings
 
 from app.config import settings
 from app.logger import log
+from app.main import (
+    QUIZ_RUNS_TOTAL,
+    QUIZ_SUCCESS_TOTAL,
+    QUIZ_FAILED_TOTAL,
+    SANDBOX_EXEC_LATENCY,
+)
 from app.services.agent import solve_quiz_task
 from app.services.browser import get_task_from_url
 from app.services.history import history_service
@@ -46,6 +51,10 @@ async def process_quiz_flow(ctx, start_url: str, run_id: str):
     """
     current_url = start_url
     await history_service.update_run(run_id, status="running")
+    
+    # Increment total quiz runs counter
+    QUIZ_RUNS_TOTAL.labels(environment=settings.ENVIRONMENT).inc()
+    log.info("worker.job_start", run_id=run_id, start_url=start_url)
 
     for i in range(5):
         log.info("worker.iteration", run_id=run_id, url=current_url, step=i + 1)
@@ -54,16 +63,17 @@ async def process_quiz_flow(ctx, start_url: str, run_id: str):
             # Step 1: Fetch task from URL
             task_text = await get_task_from_url(current_url)
 
-            # Step 2: Extract task info and generate code
-            submission_url, python_code, explanation = solve_quiz_task(
-                task_text, current_url
+            # Step 2: Extract task info and generate code (blocking, use executor)
+            loop = asyncio.get_event_loop()
+            submission_url, python_code, explanation = await loop.run_in_executor(
+                None, solve_quiz_task, task_text, current_url
             )
 
-            # Step 3: Execute generated code in sandbox
-            loop = asyncio.get_event_loop()
-            answer = await loop.run_in_executor(
-                None, execute_python_code, python_code
-            )
+            # Step 3: Execute generated code in sandbox (blocking, use executor)
+            with SANDBOX_EXEC_LATENCY.time():
+                answer = await loop.run_in_executor(
+                    None, execute_python_code, python_code
+                )
 
             # Step 4: Prepare submission payload
             payload = {
@@ -116,7 +126,8 @@ async def process_quiz_flow(ctx, start_url: str, run_id: str):
                     final_status="success",
                     completed_at=datetime.utcnow().isoformat(),
                 )
-                log.info("worker.done", run_id=run_id)
+                QUIZ_SUCCESS_TOTAL.inc()
+                log.info("worker.done", run_id=run_id, status="success")
                 break
             else:
                 # Answer was incorrect, stop processing
@@ -126,7 +137,8 @@ async def process_quiz_flow(ctx, start_url: str, run_id: str):
                     final_status="failed",
                     completed_at=datetime.utcnow().isoformat(),
                 )
-                log.info("worker.failed", run_id=run_id, step=i + 1)
+                QUIZ_FAILED_TOTAL.inc()
+                log.info("worker.failed", run_id=run_id, step=i + 1, status="failed")
                 break
 
         except Exception as e:
@@ -144,6 +156,7 @@ async def process_quiz_flow(ctx, start_url: str, run_id: str):
                 error=str(e),
                 completed_at=datetime.utcnow().isoformat(),
             )
+            QUIZ_FAILED_TOTAL.inc()
             break
 
     return {"run_id": run_id, "status": "completed"}
