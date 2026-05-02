@@ -6,61 +6,55 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
-class QuizQuestion(BaseModel):
-    """Single quiz question."""
-
-    id: str
-    text: str
-    options: List[str]
-    correct_answer: Optional[str] = None
-
-
 class QuizRequest(BaseModel):
-    """Request to start a quiz run.
+    """Request to enqueue a quiz run via ARQ.
     
-    Can be used for:
-    - /api/quiz/solve - Synchronous single task solving
-    - /api/quiz/run - Asynchronous multi-step flow via ARQ
+    Authentication is via Bearer token in Authorization header.
     """
 
     url: str = Field(..., description="Start URL of the quiz")
-    title: Optional[str] = Field(None, description="Optional quiz title")
-    questions: Optional[List[QuizQuestion]] = Field(
-        None, description="Optional pre-extracted questions"
+
+
+class IterationResponse(BaseModel):
+    """Single iteration (step) in a quiz run."""
+
+    step: int = Field(..., description="Iteration step number")
+    url: str = Field(..., description="URL of this step")
+    answer: str = Field(..., description="Answer submitted")
+    correct: bool = Field(..., description="Whether answer was correct")
+    next_url: Optional[str] = Field(None, description="Next URL if correct")
+    explanation: str = Field(..., description="AI explanation of approach")
+    timestamp: str = Field(..., description="ISO 8601 timestamp")
+
+
+class RunResponse(BaseModel):
+    """Complete quiz run response."""
+
+    id: str = Field(..., description="Run ID")
+    url: str = Field(..., description="Starting quiz URL")
+    status: str = Field(..., description="Current status: queued|running|completed")
+    final_status: Optional[str] = Field(
+        None, description="Final status: success|failed|error"
     )
-
-
-class QuizResponse(BaseModel):
-    """Response with quiz solutions."""
-
-    quiz_id: str
-    status: str
-    solutions: Optional[dict] = None
-    accuracy: Optional[float] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-
-class QuizRunResponse(BaseModel):
-    """Response when enqueueing a quiz run to ARQ."""
-
-    message: str
-    run_id: str
-    job_id: Optional[str] = None
-    status: str = "queued"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: str = Field(..., description="ISO 8601 start timestamp")
+    completed_at: Optional[str] = Field(None, description="ISO 8601 completion timestamp")
+    error: Optional[str] = Field(None, description="Error message if any")
+    iterations: List[IterationResponse] = Field(
+        default_factory=list, description="All iterations in this run"
+    )
 
 
 class HealthResponse(BaseModel):
     """Health check response."""
 
-    status: str
-    environment: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    status: str = Field(..., description="Health status: ok")
+    model: str = Field(..., description="LLM model name")
+    version: str = Field(..., description="API version")
 
 
 class ErrorResponse(BaseModel):
     """Error response."""
 
-    error: str
-    code: int
+    error: str = Field(..., description="Error message")
+    code: int = Field(..., description="HTTP status code")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
