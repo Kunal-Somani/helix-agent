@@ -36,3 +36,29 @@ venv/
 # OS generated files
 .DS_Store
 Thumbs.db
+# Environments
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# Explicitly ignored per your request
+docs/
+# Environments
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# Explicitly ignored per your request
+docs/
