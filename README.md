@@ -1,8 +1,6 @@
-# LLM Quiz Solver
+# Helix
 
-An autonomous agent that takes a URL, reads the quiz page using a headless browser, calls Claude claude-sonnet-4-20250514 to extract the problem and generate a Python solution, executes that code in an isolated sandbox, submits the answer, and follows the chain to the next task if one exists. The loop runs without human input until a terminal state is reached.
-
-Built as a production-grade showcase of agentic AI systems for the IITM Tools in Data Science curriculum.
+Helix is an autonomous agent that takes a URL, reads the quiz page using a headless browser, calls Claude claude-sonnet-4-20250514 to extract the problem and generate a Python solution, executes that code in an isolated sandbox, submits the answer, and follows the chain to the next task if one exists. The loop runs without human input until a terminal state is reached.
 
 ---
 
@@ -51,8 +49,8 @@ The workflow follows the OODA loop: Playwright **observes** the page, Claude **o
 **Prerequisites:** Docker Desktop and a `.env` file with valid credentials.
 
 ```bash
-git clone https://github.com/Kunal-Somani/llm-quiz-solver.git
-cd llm-quiz-solver
+git clone https://github.com/Kunal-Somani/helix-agent.git
+cd helix-agent
 cp .env.example .env
 # Fill in ANTHROPIC_API_KEY and MY_SECRET in .env
 docker compose up --build

@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "QuizSolver AI",
-  description: "Autonomous AI agent for recursive quiz solving",
+  title: "Helix",
+  description: "Autonomous agent for recursive web task solving",
 };
 
 export default function RootLayout({

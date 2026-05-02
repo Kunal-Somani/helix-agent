@@ -58,9 +58,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="LLM Quiz Solver",
+    title="Helix",
     version="2.0.0",
-    description="Production-grade LLM quiz solving system with ARQ, hardened sandbox, rate limiting, and metrics",
+    description="Autonomous agentic system for recursive web task solving",
     docs_url="/api/docs" if settings.ENVIRONMENT == "development" else None,
     lifespan=lifespan,
 )

@@ -1,7 +1,7 @@
 .PHONY: help install dev test lint format build docker-build docker-up docker-down clean
 
 help:
-	@echo "LLM Quiz Solver - Development Commands"
+	@echo "Helix - Development Commands"
 	@echo "========================================"
 	@echo "install         - Install Python dependencies"
 	@echo "dev             - Start development server with auto-reload"
@@ -31,7 +31,7 @@ format:
 	black backend/app --line-length=120
 
 docker-build:
-	docker build -f backend/Dockerfile -t llm-quiz-solver:latest .
+	docker build -f backend/Dockerfile -t helix-agent:latest .
 
 docker-up:
 	docker-compose up -d

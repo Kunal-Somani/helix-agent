@@ -3,7 +3,7 @@ global:
   evaluation_interval: 10s
 
 scrape_configs:
-  - job_name: quiz_solver_backend
+  - job_name: helix_backend
     static_configs:
       - targets: ["backend:8000"]
     metrics_path: /metrics
