@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from arq.connections import RedisSettings
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 import asyncio
@@ -12,26 +12,14 @@ from app.config import settings
 from app.logger import log
 from app.main import limiter
 from app.middleware.auth import verify_api_key
-from app.models.schemas import QuizRequest, RunResponse, HealthResponse
+from app.models.schemas import QuizRequest, RunResponse
 from app.services.agent import solve_quiz_task
 from app.services.browser import get_task_from_url
-from app.services.history import run_history
+from app.services import history as run_history
 from app.services.sandbox import execute_python_code
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
-
-@router.get("/health", response_model=HealthResponse)
-async def health_check():
-    """Health check endpoint (no auth, no rate limit).
-    
-    Returned by Docker HEALTHCHECK and frontend status indicator.
-    """
-    return {
-        "status": "ok",
-        "model": "claude-sonnet-4-20250514",
-        "version": "2.0.0",
-    }
 
 
 @router.get("/runs", response_model=list[RunResponse])
@@ -131,21 +119,14 @@ async def run_quiz(
         # Create run record in history
         await run_history.create_run(run_id, body.url)
 
-        # Enqueue job to ARQ (via Redis)
-        from arq import create_pool
-        redis = await create_pool(
-            RedisSettings.from_dsn(settings.REDIS_URL)
-        )
-        
-        job = await redis.enqueue_job("process_quiz_flow", body.url, run_id)
-        await redis.close()
+        from app.worker import enqueue_run
+        enqueue_run(body.url, run_id)
 
-        log.info("quiz.run_enqueued", run_id=run_id, job_id=job.job_id)
+        log.info("quiz.run_enqueued", run_id=run_id)
 
         return {
             "message": "Quiz run enqueued",
             "run_id": run_id,
-            "job_id": job.job_id,
             "status": "queued",
             "created_at": datetime.utcnow().isoformat(),
         }
@@ -173,7 +154,7 @@ async def get_quiz_status(
         Dictionary with run status, iterations, and final result
     """
     try:
-        run = await history_service.get_run(run_id)
+        run = await run_history.get_run(run_id)
         
         if not run:
             raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
