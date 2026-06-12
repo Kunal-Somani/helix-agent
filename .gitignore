@@ -1,17 +1,10 @@
-# VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -28,37 +21,24 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environments
+# Environments
+env/
 venv/
+.venv/
 .env
 !.env.example
 
-# OS generated files
+# IDEs
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+
+# OS files
 .DS_Store
 Thumbs.db
-# Environments
-.env
-.venv/
-venv/
-__pycache__/
-*.pyc
-
-# IDEs
-.vscode/
-.idea/
-
-# Explicitly ignored per your request
-docs/
-# Environments
-.env
-.venv/
-venv/
-__pycache__/
-*.pyc
-
-# IDEs
-.vscode/
-.idea/
 
 # Explicitly ignored per your request
 docs/

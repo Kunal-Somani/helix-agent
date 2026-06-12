@@ -1,90 +1,69 @@
 # Helix
 
-Helix is an autonomous agent that takes a URL, reads the quiz page using a headless browser, calls Claude claude-sonnet-4-20250514 to extract the problem and generate a Python solution, executes that code in an isolated sandbox, submits the answer, and follows the chain to the next task if one exists. The loop runs without human input until a terminal state is reached.
-
----
+Helix is an autonomous agent system designed for recursive web task solving. It processes URLs, extracts content, and delegates decision-making to a language model to answer questions or fulfill objectives. The system runs in a restricted Python sandbox to execute dynamically generated code safely.
 
 ## Architecture
 
 ```mermaid
 graph TD
-    A[User via Dashboard] -->|POST /run with Bearer token| B[FastAPI Backend]
-    B -->|enqueue job| C[ARQ Worker via Redis]
-    C -->|launch headless browser| D[Playwright Chromium]
-    D -->|raw page text| E[Anthropic Claude claude-sonnet-4-20250514]
-    E -->|tool: extract_task_info| F[Submission URL + Problem Description]
-    E -->|tool: generate_solution_code| G[Python Code]
-    G -->|execute with timeout| H[RestrictedPython Sandbox]
-    H -->|answer value| I[HTTP POST to Quiz Server]
-    I -->|next_url if correct| C
-    I -->|no next_url| J[Run Complete]
-    B -->|expose /metrics| K[Prometheus]
-    C -->|structured JSON logs| L[Loki via Promtail]
-    K --> M[Grafana Dashboard]
-    L --> M
-    B -->|SSE stream| N[Next.js Frontend]
+    A[User Dashboard] --> B[Vercel: Next.js frontend]
+    A --> C[Railway: FastAPI backend]
+    C --> D[Hugging Face Inference API: LLM]
+    C --> E[Turso: SQLite database]
+    C --> F[RestrictedPython: Sandbox]
+    C --> G[httpx: Web scraper]
 ```
-
-The workflow follows the OODA loop: Playwright **observes** the page, Claude **orients** by extracting the task structure, Claude **decides** by generating solution code, and the sandbox plus HTTP submit form the **act** step. On a correct answer the loop restarts at the next URL.
-
----
 
 ## Tech Stack
 
-| Layer | Technology | Reason |
-| :--- | :--- | :--- |
-| API | FastAPI + uvicorn | Async-first, automatic OpenAPI docs, native SSE support |
-| Task Queue | ARQ on Redis | Async-native, persistent jobs, built-in retry and timeout |
-| AI Engine | Anthropic Claude claude-sonnet-4-20250514 via official SDK | Structured tool use outputs, no regex parsing needed |
-| Browser Automation | Playwright Chromium headless | Handles JS-rendered pages and networkidle state |
-| Code Execution | RestrictedPython + SIGALRM | Safe eval with timeout, blocks filesystem and network access |
-| Observability | Prometheus + Loki + Grafana | Metrics, logs, and dashboards in one stack |
-| Frontend | Next.js 14 App Router + shadcn/ui + TanStack Query | Server components, auto-polling run status, dark mode |
-| Containerization | Docker multi-stage builds | Separate backend, worker, and frontend containers |
+| Layer | Technology |
+| :--- | :--- |
+| Frontend | Next.js |
+| Backend | FastAPI |
+| Database | Turso |
+| Inference | Hugging Face |
+| Sandbox | RestrictedPython |
 
----
-
-## Running Locally
-
-**Prerequisites:** Docker Desktop and a `.env` file with valid credentials.
+## Local Development
 
 ```bash
 git clone https://github.com/Kunal-Somani/helix-agent.git
 cd helix-agent
 cp .env.example .env
-# Fill in ANTHROPIC_API_KEY and MY_SECRET in .env
-docker compose up --build
+# Fill .env with your values
+docker compose up
 ```
 
-| Service | URL |
-| :--- | :--- |
-| Dashboard | <http://localhost:3000> |
-| API docs | <http://localhost:8000/docs> |
-| Grafana | <http://localhost:3001> (admin / admin) |
-| Prometheus | <http://localhost:9090> |
+## Live Links
 
----
+- Frontend: https://helix-app.vercel.app
+- API Docs: https://helix-api.up.railway.app/api/docs
 
 ## API Reference
 
 | Method | Endpoint | Auth | Description |
 | :--- | :--- | :--- | :--- |
-| POST | /run | Bearer token | Enqueue a new quiz run |
-| GET | /runs | None | List all runs with status |
-| GET | /runs/{id} | None | Get a single run with full iteration history |
-| GET | /runs/{id}/logs | None | SSE stream of live run logs |
-| GET | /health | None | Health check with model name and version |
-| GET | /metrics | None | Prometheus metrics endpoint |
-
----
+| GET | `/health` | None | System health check |
+| GET | `/api/quiz/runs` | None | List historical runs |
+| GET | `/api/quiz/runs/{id}` | None | Retrieve specific run |
+| POST | `/api/quiz/run` | Bearer | Enqueue a new run |
+| GET | `/api/quiz/status/{id}` | Bearer | Get status of an active run |
+| GET | `/api/quiz/runs/{id}/logs` | None | Stream execution logs |
+| GET | `/api/metrics/performance` | None | System performance metrics |
 
 ## Environment Variables
 
-| Variable | Required | Description |
-| :--- | :--- | :--- |
-| ANTHROPIC_API_KEY | Yes | API key from console.anthropic.com |
-| MY_EMAIL | Yes | Email submitted with each quiz answer |
-| MY_SECRET | Yes | Bearer token for POST /run authentication |
-| REDIS_URL | No | Redis connection string (default: redis://redis:6379) |
-| LOG_LEVEL | No | Logging verbosity (default: INFO) |
-| ENVIRONMENT | No | Used as a Prometheus label (default: development) |
+| Variable | Description |
+| :--- | :--- |
+| `HF_API_TOKEN` | Hugging Face token |
+| `TURSO_DATABASE_URL` | Turso database URL |
+| `TURSO_AUTH_TOKEN` | Turso auth token |
+| `FRONTEND_URL` | Allowed CORS origin |
+| `MY_EMAIL` | Administrator email |
+| `MY_SECRET` | Auth secret key |
+| `LOG_LEVEL` | Application log level |
+| `ENVIRONMENT` | Target environment |
+
+## License
+
+MIT

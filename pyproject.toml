@@ -9,13 +9,13 @@ description = "Production-grade LLM quiz solving system with browser automation 
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Team", email = "your-email@example.com"}
+    {name = "Kunal Somani", email = "kunal@example.com"}
 ]
 requires-python = ">=3.12"
 
 [project.urls]
-Repository = "https://github.com/yourusername/helix-agent"
-License = "https://github.com/yourusername/helix-agent/blob/main/LICENSE"
+Repository = "https://github.com/Kunal-Somani/helix-agent"
+License = "https://github.com/Kunal-Somani/helix-agent/blob/main/LICENSE"
 
 [tool.black]
 line-length = 120
