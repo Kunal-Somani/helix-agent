@@ -2,7 +2,9 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter
@@ -52,6 +54,10 @@ async def lifespan(app: FastAPI):
     # Startup
     setup_logging(settings.LOG_LEVEL)
     log.info("app.startup", environment=settings.ENVIRONMENT, version="2.0.0")
+    
+    from app.db import init_db
+    await init_db()
+    
     yield
     # Shutdown
     log.info("app.shutdown")
@@ -67,10 +73,32 @@ app = FastAPI(
 
 # Configure rate limiting
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, lambda request, exc: {
-    "error": "Rate limit exceeded",
-    "detail": str(exc.detail)
-})
+
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Rate limit exceeded", "detail": str(exc.detail)}
+    )
+
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "0"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
 
 # Attach Prometheus instrumentation
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
