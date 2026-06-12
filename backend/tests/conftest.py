@@ -1,6 +1,12 @@
 """Test fixtures and configuration."""
 
+import os
 import pytest
+
+os.environ.setdefault("HF_API_TOKEN", "dummy")
+os.environ.setdefault("MY_EMAIL", "dummy@example.com")
+os.environ.setdefault("MY_SECRET", "dummy")
+
 from app.config import settings
 from app.main import app
 from fastapi.testclient import TestClient
