@@ -1,113 +1,32 @@
 version: "3.9"
 
 services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     env_file: .env
-    depends_on:
-      redis:
-        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  worker:
-    build: ./backend
-    command: python -m arq app.worker.WorkerSettings
-    env_file: .env
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
   frontend:
     build: ./frontend
+    command: npm run dev
     ports:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+    env_file: .env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
     restart: unless-stopped
-
-  prometheus:
-    image: prom/prometheus:v2.51.0
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
-    restart: unless-stopped
-
-  loki:
-    image: grafana/loki:2.9.0
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./observability/loki-config.yml:/etc/loki/local-config.yaml
-      - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:10.4.0
-    ports:
-      - "3001:3000"
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - ./observability/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
-      - grafana_data:/var/lib/grafana
-    depends_on:
-      - prometheus
-      - loki
-    restart: unless-stopped
-
-  promtail:
-    image: grafana/promtail:2.9.0
-    volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: -config.file=/etc/promtail/config.yml
-    configs:
-      - source: promtail_config
-        target: /etc/promtail/config.yml
-    restart: unless-stopped
-
-configs:
-  promtail_config:
-    content: |
-      server:
-        http_listen_port: 9080
-      positions:
-        filename: /tmp/positions.yaml
-      clients:
-        - url: http://loki:3100/loki/api/v1/push
-      scrape_configs:
-        - job_name: docker
-          docker_sd_configs:
-            - host: unix:///var/run/docker.sock
-              refresh_interval: 5s
-          relabel_configs:
-            - source_labels: [__meta_docker_container_name]
-              target_label: container
-
-volumes:
-  loki_data:
-  grafana_data:

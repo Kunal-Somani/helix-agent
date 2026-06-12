@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - run: pip install ruff
       - run: ruff check backend/
 
@@ -23,11 +23,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - run: pip install -r backend/requirements.txt
-      - run: playwright install chromium
-        working-directory: backend
-      - run: pytest backend/ -v --tb=short || echo "No tests yet"
+      - run: pytest backend/tests -v --tb=short
+        env:
+          HF_API_TOKEN: dummy
+          MY_EMAIL: dummy@example.com
+          MY_SECRET: dummy
+          FRONTEND_URL: http://localhost:3000
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -46,11 +49,3 @@ jobs:
         working-directory: frontend
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
-
-  docker-compose-build:
-    runs-on: ubuntu-latest
-    needs: [backend-lint, frontend-build]
-    steps:
-      - uses: actions/checkout@v4
-      - run: cp .env.example .env
-      - run: docker compose build
