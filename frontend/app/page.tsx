@@ -30,7 +30,7 @@ export default function Dashboard() {
               <Activity className="h-5 w-5 text-blue-400" />
             </div>
             <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-              QuizSolver AI
+              Helix
             </h1>
           </div>
           

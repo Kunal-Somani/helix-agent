@@ -10,7 +10,6 @@ import { Loader2, Plus } from "lucide-react"
 import { useQueryClient, useMutation } from "@tanstack/react-query"
 import { submitRun } from "@/lib/api"
 import { toast } from "sonner"
-import axios from "axios"
 
 const schema = z.object({
   url: z.string().url("Must be a valid URL"),
@@ -40,11 +39,7 @@ export function SubmitForm() {
     },
     onError: (error) => {
       let msg = "An unexpected error occurred"
-      if (axios.isAxiosError(error) && error.response?.data?.detail) {
-        msg = typeof error.response.data.detail === 'string' 
-          ? error.response.data.detail 
-          : JSON.stringify(error.response.data.detail)
-      } else if (error instanceof Error) {
+      if (error instanceof Error) {
         msg = error.message
       }
       toast.error(`Submission failed: ${msg}`)

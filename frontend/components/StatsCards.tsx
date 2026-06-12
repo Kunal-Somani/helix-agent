@@ -14,8 +14,8 @@ export function StatsCards({ runs }: Props) {
   const successRate = total > 0 ? Math.round((completed / total) * 100) : 0
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card className="bg-slate-900 border-slate-800">
+    <div className="flex overflow-x-auto lg:flex-col gap-4 pb-2 lg:pb-0">
+      <Card className="bg-slate-900 border-slate-800 min-w-[160px] shrink-0">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium text-slate-400">Total Runs</CardTitle>
           <List className="h-4 w-4 text-slate-500" />
@@ -25,7 +25,7 @@ export function StatsCards({ runs }: Props) {
         </CardContent>
       </Card>
 
-      <Card className="bg-slate-900 border-slate-800">
+      <Card className="bg-slate-900 border-slate-800 min-w-[160px] shrink-0">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium text-slate-400">Completed</CardTitle>
           <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -35,7 +35,7 @@ export function StatsCards({ runs }: Props) {
         </CardContent>
       </Card>
 
-      <Card className="bg-slate-900 border-slate-800">
+      <Card className="bg-slate-900 border-slate-800 min-w-[160px] shrink-0">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium text-slate-400">Success Rate</CardTitle>
           <Percent className="h-4 w-4 text-amber-500" />
@@ -45,7 +45,7 @@ export function StatsCards({ runs }: Props) {
         </CardContent>
       </Card>
 
-      <Card className="bg-slate-900 border-slate-800">
+      <Card className="bg-slate-900 border-slate-800 min-w-[160px] shrink-0">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium text-slate-400">Active Now</CardTitle>
           <Activity className="h-4 w-4 text-blue-500" />
